@@ -42,18 +42,28 @@ public final class HighwayPlanningService implements AutoCloseable {
 
     public CompletableFuture<Void> prepare(int chunkX, int chunkZ) {
         HubKey center = planner.getPlanningCell(chunkX, chunkZ);
-        int radius = planner.settings().hubSearchRadiusCells();
+        int routeRadius = planner.settings().hubSearchRadiusCells();
+        int hubRadius = routeRadius * 2;
+        List<CompletableFuture<Optional<HighwayHub>>> hubFutures = new ArrayList<>();
 
-        List<CompletableFuture<List<HighwayRoute>>> routeFutures = new ArrayList<>();
-
-        for (int dx = -radius; dx <= radius; dx++) {
-            for (int dz = -radius; dz <= radius; dz++) {
-                HubKey owner = new HubKey(center.planningCellX() + dx, center.planningCellZ() + dz);
-                routeFutures.add(getOwnedRoutes(owner));
+        for (int dx = -hubRadius; dx <= hubRadius; dx++) {
+            for (int dz = -hubRadius; dz <= hubRadius; dz++) {
+                HubKey key = new HubKey(center.planningCellX() + dx, center.planningCellZ() + dz);
+                hubFutures.add(getHub(key));
             }
         }
 
-        return CompletableFuture.allOf(routeFutures.toArray(CompletableFuture[]::new));
+        CompletableFuture<Void> hubsReady = CompletableFuture.allOf(hubFutures.toArray(CompletableFuture[]::new));
+        List<CompletableFuture<List<HighwayRoute>>> routes = new ArrayList<>();
+
+        for (int dx = -routeRadius; dx <= routeRadius; dx++) {
+            for (int dz = -routeRadius; dz <= routeRadius; dz++) {
+                HubKey owner = new HubKey(center.planningCellX() + dx, center.planningCellZ() + dz);
+                routes.add(hubsReady.thenCompose(ignored -> getOwnedRoutes(owner)));
+            }
+        }
+
+        return CompletableFuture.allOf(routes.toArray(CompletableFuture[]::new));
     }
 
     public CompletableFuture<List<HighwayHub>> prepareHubs(int chunkX, int chunkZ) {
@@ -139,6 +149,19 @@ public final class HighwayPlanningService implements AutoCloseable {
     }
 
     public String getParallelismStats() {
-        return "Running tasks: " + runningTasks + ", completed tasks: " + completedTasks + ", submitted tasks: " + submittedTasks;
+        if (executor instanceof ForkJoinPool pool) {
+            return "Parallelism: " + pool.getParallelism()
+                    + ", active: " + pool.getActiveThreadCount()
+                    + ", running: " + pool.getRunningThreadCount()
+                    + ", queued: " + pool.getQueuedTaskCount()
+                    + ", submissions: " + pool.getQueuedSubmissionCount()
+                    + ", runningTasks: " + runningTasks.sum()
+                    + ", completedTasks: " + completedTasks.sum()
+                    + ", submittedTasks: " + submittedTasks.sum();
+        }
+
+        return "Running tasks: " + runningTasks.sum()
+                + ", completed tasks: " + completedTasks.sum()
+                + ", submitted tasks: " + submittedTasks.sum();
     }
 }
