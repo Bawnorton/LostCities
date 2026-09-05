@@ -83,7 +83,8 @@ public class Highway {
                     && CitySphere.intersectsWithCitySphere(coord, provider)) {
                 return HighwayInfo.NONE;
             }
-            return provider.getHighwayPlanner().getHighwayInfo(coord.chunkX(), coord.chunkZ());
+            return provider.getHighwayPlanningService()
+                    .getHighwayInfo(coord.chunkX(), coord.chunkZ());
         }
         HighwayNoise noise = getNoise(provider);
         int xLevel = getHighwayLevel(provider, profile, Highway.X_HIGHWAY_LEVEL_CACHE,

@@ -12,8 +12,8 @@ import mcjty.lostcities.varia.CustomTeleporter;
 import mcjty.lostcities.varia.WorldTools;
 import mcjty.lostcities.worldgen.GlobalTodo;
 import mcjty.lostcities.worldgen.IDimensionInfo;
-import mcjty.lostcities.worldgen.LostCityWorldGenData;
 import mcjty.lostcities.worldgen.LostCityFeature;
+import mcjty.lostcities.worldgen.LostCityWorldGenData;
 import mcjty.lostcities.worldgen.gen.Scattered;
 import mcjty.lostcities.worldgen.lost.*;
 import mcjty.lostcities.worldgen.lost.cityassets.AssetRegistries;
@@ -58,7 +58,6 @@ import java.util.function.Predicate;
 import static mcjty.lostcities.setup.Registration.LOSTCITY;
 
 public class ForgeEventHandlers {
-
     private final Map<ResourceKey<Level>, BlockPos> spawnPositions = new HashMap<>();
 
     @SubscribeEvent
@@ -225,22 +224,26 @@ public class ForgeEventHandlers {
             switch (profile.LANDSCAPE_TYPE) {
                 case DEFAULT, SPHERES -> {
                     if (needsCheck) {
-                        BlockPos pos = findSafeSpawnPoint(serverLevel, dimensionInfo, isSuitable, isSuitableChunk);
-                        serverLevel.setDefaultSpawnPos(pos, 0.0f);
-                        event.getSettings().setSpawn(pos, 0.0f);
-                        spawnPositions.put(serverLevel.dimension(), pos);
-                        event.setCanceled(true);
+                        setSpawnPoint(event, serverLevel, dimensionInfo, isSuitable, isSuitableChunk);
                     }
                 }
-                case FLOATING, SPACE, CAVERN, CAVERNSPHERES -> {
-                    BlockPos pos = findSafeSpawnPoint(serverLevel, dimensionInfo, isSuitable, isSuitableChunk);
-                    serverLevel.setDefaultSpawnPos(pos, 0.0f);
-                    event.getSettings().setSpawn(pos, 0.0f);
-                    spawnPositions.put(serverLevel.dimension(), pos);
-                    event.setCanceled(true);
-                }
+                case FLOATING, SPACE, CAVERN, CAVERNSPHERES -> setSpawnPoint(event, serverLevel, dimensionInfo, isSuitable, isSuitableChunk);
             }
         }
+    }
+
+    private void setSpawnPoint(
+            LevelEvent.CreateSpawnPosition event,
+            ServerLevel serverLevel,
+            IDimensionInfo dimensionInfo,
+            Predicate<BlockPos> isSuitable,
+            Predicate<ChunkCoord> isSuitableChunk
+    ) {
+        BlockPos pos = findSafeSpawnPoint(serverLevel, dimensionInfo, isSuitable, isSuitableChunk);
+        event.getSettings().setSpawn(pos, 0.0f);
+        serverLevel.setDefaultSpawnPos(pos, 0.0f);
+        spawnPositions.put(serverLevel.dimension(), pos);
+        event.setCanceled(true);
     }
 
     private boolean isOutsideBuilding(IDimensionInfo provider, ChunkCoord coord) {

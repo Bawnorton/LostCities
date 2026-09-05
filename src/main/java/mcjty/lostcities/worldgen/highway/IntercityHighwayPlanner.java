@@ -1,15 +1,9 @@
 package mcjty.lostcities.worldgen.highway;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.EnumSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.TreeMap;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Function;
 
 /**
@@ -143,14 +137,10 @@ public final class IntercityHighwayPlanner {
 
     public HighwayInfo getHighwayInfo(int chunkX, int chunkZ) {
         ChunkKey key = new ChunkKey(chunkX, chunkZ);
-        HighwayInfo cached = chunkCache.get(key);
-        if (cached != null) {
-            return cached;
-        }
-        HighwayInfo calculated = calculateHighwayInfo(chunkX, chunkZ);
-        chunkCache.put(key, calculated);
-        uncachedChunkQueries.incrementAndGet();
-        return calculated;
+        return chunkCache.computeIfAbsent(key, ignored -> {
+            uncachedChunkQueries.incrementAndGet();
+            return calculateHighwayInfo(chunkX, chunkZ);
+        });
     }
 
     public CacheStats getCacheStats() {
@@ -573,61 +563,59 @@ public final class IntercityHighwayPlanner {
 
     private static final class BoundedCache<K, V> {
         private final int maximumSize;
-        private final LinkedHashMap<K, V> values;
-        private long hits;
-        private long misses;
+        private final ConcurrentHashMap<K, V> values = new ConcurrentHashMap<>();
+        private final LongAdder hits = new LongAdder();
+        private final LongAdder misses = new LongAdder();
 
         private BoundedCache(int maximumSize) {
             this.maximumSize = maximumSize;
-            values = new LinkedHashMap<>(16, .75f, true);
         }
 
-        synchronized V get(K key) {
+        V get(K key) {
             V value = values.get(key);
             if (value == null) {
-                misses++;
+                misses.increment();
             } else {
-                hits++;
+                hits.increment();
             }
             return value;
         }
 
-        synchronized void put(K key, V value) {
+        void put(K key, V value) {
             values.put(key, value);
             trim();
         }
 
-        synchronized V computeIfAbsent(K key, Function<K, V> factory) {
-            V value = values.get(key);
-            if (value != null) {
-                hits++;
-                return value;
-            }
-            misses++;
-            value = factory.apply(key);
-            values.put(key, value);
-            trim();
-            return value;
+        V computeIfAbsent(K key, Function<K, V> factory) {
+            return values.computeIfAbsent(key, ignored -> {
+                misses.increment();
+                return factory.apply(key);
+            });
         }
 
-        synchronized void clear() {
+        void clear() {
             values.clear();
-            hits = 0;
-            misses = 0;
+            hits.reset();
+            misses.reset();
         }
 
-        synchronized long hits() {
-            return hits;
+        long hits() {
+            return hits.sum();
         }
 
-        synchronized long misses() {
-            return misses;
+        long misses() {
+            return misses.sum();
         }
 
         private void trim() {
-            while (values.size() > maximumSize) {
-                K eldest = values.keySet().iterator().next();
-                values.remove(eldest);
+            int excess = values.size() - maximumSize;
+            if (excess <= 0) {
+                return;
+            }
+
+            var iterator = values.keySet().iterator();
+            while (excess-- > 0 && iterator.hasNext()) {
+                values.remove(iterator.next());
             }
         }
     }

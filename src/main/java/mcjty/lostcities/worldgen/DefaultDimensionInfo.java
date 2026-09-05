@@ -4,13 +4,11 @@ import mcjty.lostcities.config.LostCityProfile;
 import mcjty.lostcities.config.HighwayGenerationMode;
 import mcjty.lostcities.config.StreetGenerationMode;
 import mcjty.lostcities.varia.ChunkCoord;
+import mcjty.lostcities.worldgen.highway.*;
 import mcjty.lostcities.worldgen.lost.cityassets.AssetRegistries;
 import mcjty.lostcities.worldgen.lost.cityassets.WorldStyle;
 import mcjty.lostcities.worldgen.street.HierarchicalStreetPlanner;
 import mcjty.lostcities.worldgen.street.StreetPlannerSettings;
-import mcjty.lostcities.worldgen.highway.ApproximateCityPotential;
-import mcjty.lostcities.worldgen.highway.HighwayPlannerSettings;
-import mcjty.lostcities.worldgen.highway.IntercityHighwayPlanner;
 import mcjty.lostcities.worldgen.lost.BuildingInfo;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -45,6 +43,7 @@ public class DefaultDimensionInfo implements IDimensionInfo {
     private final HierarchicalStreetPlanner streetPlanner;
     private final HighwayGenerationMode highwayGenerationMode;
     private final IntercityHighwayPlanner highwayPlanner;
+    private final HighwayPlanningService highwayPlanningService;
 
     private final ThreadLocal<Random> random;
 
@@ -72,10 +71,12 @@ public class DefaultDimensionInfo implements IDimensionInfo {
             highwayPlanner = new IntercityHighwayPlanner(world.getSeed(), world.getLevel().dimension().location().toString(),
                     highwaySettings,
                     new ApproximateCityPotential(world.getSeed(), profile, this::applyHighwayCityConstraints),
-                    (chunkX, chunkZ) -> BuildingInfo.getCityLevel(new ChunkCoord(type, chunkX, chunkZ), this),
+                    new HighwayCityLevelSource(this),
                     LostCityHighwayData.get(world.getLevel()).forDimension(world.getLevel().dimension(), cacheSignature));
+            highwayPlanningService = new HighwayPlanningService(highwayPlanner);
         } else {
             highwayPlanner = null;
+            highwayPlanningService = null;
         }
         biomeRegistry = world.registryAccess().registryOrThrow(Registries.BIOME);
     }
@@ -150,6 +151,14 @@ public class DefaultDimensionInfo implements IDimensionInfo {
             throw new IllegalStateException("The inter-city highway planner is unavailable in LEGACY mode");
         }
         return highwayPlanner;
+    }
+
+    @Override
+    public HighwayPlanningService getHighwayPlanningService() {
+        if (highwayPlanningService == null) {
+            throw new IllegalStateException("The inter-city highway planner service is unavailable in LEGACY mode");
+        }
+        return highwayPlanningService;
     }
 
     @Override
