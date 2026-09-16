@@ -3,7 +3,6 @@ package mcjty.lostcities.setup;
 import mcjty.lostcities.LostCities;
 import mcjty.lostcities.api.LostChunkCharacteristics;
 import mcjty.lostcities.commands.ModCommands;
-import mcjty.lostcities.config.HighwayGenerationMode;
 import mcjty.lostcities.config.LostCityProfile;
 import mcjty.lostcities.playerdata.PlayerProperties;
 import mcjty.lostcities.playerdata.PropertiesDispatcher;
@@ -360,13 +359,6 @@ public class ForgeEventHandlers {
 
     private BlockPos findSafeSpawnPointInChunk(Level world, IDimensionInfo provider, @Nonnull Predicate<BlockPos> isSuitable,
                                                @Nonnull Predicate<ChunkCoord> isSuitableChunk, int chunkX, int chunkZ) {
-
-        if (provider.getHighwayGenerationMode() == HighwayGenerationMode.INTERCITY_NETWORK_V1) {
-            provider.getHighwayPlanningService().prepare(
-                    chunkX,
-                    chunkZ
-            );
-        }
 
         ChunkCoord coord = new ChunkCoord(provider.getType(), chunkX, chunkZ);
         if (!isSuitableChunk.test(coord)) {
