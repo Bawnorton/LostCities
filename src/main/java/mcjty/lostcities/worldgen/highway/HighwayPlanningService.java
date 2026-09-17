@@ -18,6 +18,7 @@ public final class HighwayPlanningService implements AutoCloseable {
     private final ConcurrentHashMap<HubKey, CompletableFuture<List<IntercityHighwayPlanner.ConnectionCandidate>>> candidateFutures = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<HubKey, CompletableFuture<List<HubKey>>> selectionFutures = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<HubKey, CompletableFuture<List<HighwayRoute>>> routeFutures = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<HubKey, CompletableFuture<Void>> prepareFutures = new ConcurrentHashMap<>();
 
     private final LongAdder runningTasks = new LongAdder();
     private final LongAdder completedTasks = new LongAdder();
@@ -37,23 +38,27 @@ public final class HighwayPlanningService implements AutoCloseable {
     }
 
     public HighwayInfo getHighwayInfo(int chunkX, int chunkZ) {
+        prepare(chunkX, chunkZ).join();
         return planner.getHighwayInfo(chunkX, chunkZ);
     }
 
     public CompletableFuture<Void> prepare(int chunkX, int chunkZ) {
-        HubKey center = planner.getPlanningCell(chunkX, chunkZ);
+        return prepareFutures.computeIfAbsent(planner.getPlanningCell(chunkX, chunkZ), this::schedulePrepare);
+    }
+
+    private CompletableFuture<Void> schedulePrepare(HubKey center) {
         int routeRadius = planner.settings().hubSearchRadiusCells();
         int hubRadius = routeRadius * 2;
-        List<CompletableFuture<Optional<HighwayHub>>> hubFutures = new ArrayList<>();
+        List<CompletableFuture<Optional<HighwayHub>>> hubs = new ArrayList<>();
 
         for (int dx = -hubRadius; dx <= hubRadius; dx++) {
             for (int dz = -hubRadius; dz <= hubRadius; dz++) {
                 HubKey key = new HubKey(center.planningCellX() + dx, center.planningCellZ() + dz);
-                hubFutures.add(getHub(key));
+                hubs.add(getHub(key));
             }
         }
 
-        CompletableFuture<Void> hubsReady = CompletableFuture.allOf(hubFutures.toArray(CompletableFuture[]::new));
+        CompletableFuture<Void> hubsReady = CompletableFuture.allOf(hubs.toArray(CompletableFuture[]::new));
         List<CompletableFuture<List<HighwayRoute>>> routes = new ArrayList<>();
 
         for (int dx = -routeRadius; dx <= routeRadius; dx++) {
@@ -133,6 +138,7 @@ public final class HighwayPlanningService implements AutoCloseable {
     }
 
     public void clear() {
+        prepareFutures.clear();
         hubFutures.clear();
         candidateFutures.clear();
         selectionFutures.clear();

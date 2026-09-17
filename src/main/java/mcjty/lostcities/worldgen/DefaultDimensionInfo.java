@@ -208,4 +208,11 @@ public class DefaultDimensionInfo implements IDimensionInfo {
     public ResourceKey<Level> dimension() {
         return type;
     }
+
+    @Override
+    public void shutdown() {
+        if (highwayPlanningService != null) {
+            highwayPlanningService.close();
+        }
+    }
 }

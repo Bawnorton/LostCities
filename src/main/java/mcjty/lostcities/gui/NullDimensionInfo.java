@@ -296,4 +296,11 @@ public class NullDimensionInfo implements IDimensionInfo {
     public ResourceKey<Level> dimension() {
         return getType();
     }
+
+    @Override
+    public void shutdown() {
+        if (highwayPlanningService != null) {
+            highwayPlanningService.close();
+        }
+    }
 }

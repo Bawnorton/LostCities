@@ -1,7 +1,9 @@
 package mcjty.lostcities.worldgen.highway;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Function;
@@ -563,7 +565,8 @@ public final class IntercityHighwayPlanner {
 
     private static final class BoundedCache<K, V> {
         private final int maximumSize;
-        private final ConcurrentHashMap<K, V> values = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<K, CompletableFuture<V>> values = new ConcurrentHashMap<>();
+        private final AtomicBoolean trimming = new AtomicBoolean();
         private final LongAdder hits = new LongAdder();
         private final LongAdder misses = new LongAdder();
 
@@ -571,26 +574,28 @@ public final class IntercityHighwayPlanner {
             this.maximumSize = maximumSize;
         }
 
-        V get(K key) {
-            V value = values.get(key);
-            if (value == null) {
-                misses.increment();
-            } else {
-                hits.increment();
-            }
-            return value;
-        }
-
-        void put(K key, V value) {
-            values.put(key, value);
-            trim();
-        }
-
         V computeIfAbsent(K key, Function<K, V> factory) {
-            return values.computeIfAbsent(key, ignored -> {
-                misses.increment();
-                return factory.apply(key);
-            });
+            CompletableFuture<V> existing = values.get(key);
+            if (existing == null) {
+                CompletableFuture<V> created = new CompletableFuture<>();
+                existing = values.putIfAbsent(key, created);
+                if (existing == null) {
+                    misses.increment();
+                    V value;
+                    try {
+                        value = factory.apply(key);
+                    } catch (Throwable e) {
+                        values.remove(key, created);
+                        created.completeExceptionally(e);
+                        throw e;
+                    }
+                    created.complete(value);
+                    trim();
+                    return value;
+                }
+            }
+            hits.increment();
+            return existing.join();
         }
 
         void clear() {
@@ -608,14 +613,18 @@ public final class IntercityHighwayPlanner {
         }
 
         private void trim() {
-            int excess = values.size() - maximumSize;
-            if (excess <= 0) {
+            if (values.size() <= maximumSize || !trimming.compareAndSet(false, true)) {
                 return;
             }
-
-            var iterator = values.keySet().iterator();
-            while (excess-- > 0 && iterator.hasNext()) {
-                values.remove(iterator.next());
+            try {
+                int excess = values.size() - maximumSize;
+                var iterator = values.keySet().iterator();
+                while (excess-- > 0 && iterator.hasNext()) {
+                    iterator.next();
+                    iterator.remove();
+                }
+            } finally {
+                trimming.set(false);
             }
         }
     }
