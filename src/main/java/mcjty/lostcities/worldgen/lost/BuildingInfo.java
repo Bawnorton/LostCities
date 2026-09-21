@@ -1219,7 +1219,6 @@ public class BuildingInfo implements ILostChunkInfo {
         return computeCityLevel(key, provider);
     }
 
-    /** BASE stage body. Call {@link #getCityLevel} instead; this one is uncached. */
     public static int computeCityLevel(ChunkCoord key, IDimensionInfo provider) {
         if ((provider.getProfile().isSpace() || provider.getProfile().isVoidSpheres())) {
             return getCityLevelSpace(key, provider);
