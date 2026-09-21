@@ -47,24 +47,13 @@ public final class HighwayPlanningService implements AutoCloseable {
     }
 
     private CompletableFuture<Void> schedulePrepare(HubKey center) {
-        int routeRadius = planner.settings().hubSearchRadiusCells();
-        int hubRadius = routeRadius * 2;
-        List<CompletableFuture<Optional<HighwayHub>>> hubs = new ArrayList<>();
-
-        for (int dx = -hubRadius; dx <= hubRadius; dx++) {
-            for (int dz = -hubRadius; dz <= hubRadius; dz++) {
-                HubKey key = new HubKey(center.planningCellX() + dx, center.planningCellZ() + dz);
-                hubs.add(getHub(key));
-            }
-        }
-
-        CompletableFuture<Void> hubsReady = CompletableFuture.allOf(hubs.toArray(CompletableFuture[]::new));
+        int radius = planner.settings().hubSearchRadiusCells();
         List<CompletableFuture<List<HighwayRoute>>> routes = new ArrayList<>();
 
-        for (int dx = -routeRadius; dx <= routeRadius; dx++) {
-            for (int dz = -routeRadius; dz <= routeRadius; dz++) {
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
                 HubKey owner = new HubKey(center.planningCellX() + dx, center.planningCellZ() + dz);
-                routes.add(hubsReady.thenCompose(ignored -> getOwnedRoutes(owner)));
+                routes.add(getOwnedRoutes(owner));
             }
         }
 
@@ -96,11 +85,29 @@ public final class HighwayPlanningService implements AutoCloseable {
     public CompletableFuture<List<IntercityHighwayPlanner.ConnectionCandidate>> getCandidates(HubKey source) {
         return candidateFutures.computeIfAbsent(
                 source,
-                key -> getHub(key).thenApplyAsync(
+                key -> prepareCandidateHubs(key).thenApplyAsync(
                         ignored -> planner.getConnectionCandidates(key),
                         executor
                 )
         );
+    }
+
+    private CompletableFuture<Void> prepareCandidateHubs(HubKey source) {
+        return getHub(source).thenCompose(hub -> {
+            if (hub.isEmpty()) {
+                return CompletableFuture.completedFuture(null);
+            }
+            int radius = planner.settings().hubSearchRadiusCells();
+            List<CompletableFuture<Optional<HighwayHub>>> neighbours = new ArrayList<>();
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    if (dx != 0 || dz != 0) {
+                        neighbours.add(getHub(new HubKey(source.planningCellX() + dx, source.planningCellZ() + dz)));
+                    }
+                }
+            }
+            return CompletableFuture.allOf(neighbours.toArray(CompletableFuture[]::new));
+        });
     }
 
     public CompletableFuture<List<HubKey>> getSelectedNeighbours(HubKey source) {
@@ -116,7 +123,15 @@ public final class HighwayPlanningService implements AutoCloseable {
     public CompletableFuture<List<HighwayRoute>> getOwnedRoutes(HubKey owner) {
         return routeFutures.computeIfAbsent(
                 owner,
-                key -> getSelectedNeighbours(key).thenApplyAsync(
+                key -> getSelectedNeighbours(key).thenCompose(neighbours -> {
+                    List<CompletableFuture<List<HubKey>>> reciprocal = new ArrayList<>();
+                    for (HubKey neighbour : neighbours) {
+                        if (key.compareTo(neighbour) < 0) {
+                            reciprocal.add(getSelectedNeighbours(neighbour));
+                        }
+                    }
+                    return CompletableFuture.allOf(reciprocal.toArray(CompletableFuture[]::new));
+                }).thenApplyAsync(
                         ignored -> planner.getOwnedRoutes(key),
                         executor
                 )

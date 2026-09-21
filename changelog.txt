@@ -1,4 +1,7 @@
-1.20-7.5.6:
+1.20-<>:
+- Forced-building spawn searches now reject impossible city chunks and city styles before full building planning, reducing new-world spawn delays. Experimentally, this cuts down on about 40% of the overall time and 99% of the queried chunks. The main bottleneck is still highway planning for the remaining chunks.
+- Inter-city highway planning now schedules only hubs reached by route and reciprocal-neighbour dependencies across workers, avoiding fixed-area prewarming and synchronous cold hub scans during route selection
+- Inter-city highway planning now skips terrain samples that cannot qualify as a hub, reducing work when exploring new areas. Experimentally, this cuts down on about 80% of the world height queries when generating highway hubs.
 - Terrain height sampling no longer blocks all world-generation workers on a single lock, so chunks in different areas generate in parallel instead of queueing behind each other
 - Chunk planning is now tracked per chunk instead of per dimension, so a chunk that has to plan a large inter-city highway network no longer stalls generation everywhere else in the world
 - Inter-city highway planning now reuses the shared city-level cache instead of recalculating terrain heights for every hub it samples

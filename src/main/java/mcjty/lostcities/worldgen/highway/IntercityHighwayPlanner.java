@@ -25,7 +25,7 @@ public final class IntercityHighwayPlanner {
     private static final long CONNECTION_RANK_SALT = 0x34ce791b582da6f0L;
     private static final long CONNECTION_ACCEPT_SALT = 0x72b514e90c63dfa8L;
     private static final long ROUTE_SHAPE_SALT = 0x19e8c347a65d2bf0L;
-    private static final int POTENTIAL_SCALE = 1_000_000;
+    private static final int POTENTIAL_SCALE = CityPotential.SCORE_SCALE;
     private static final int ROUTE_PENALTY_SAMPLE_SPACING = 8;
     private static final int ENDPOINT_PENALTY_DISCOUNT = 16;
 
@@ -161,6 +161,7 @@ public final class IntercityHighwayPlanner {
     private Optional<HighwayHub> calculateHub(HubKey cell) {
         int size = settings.planningCellSize();
         int spacing = settings.hubSampleSpacing();
+        int minimum = Math.round(settings.hubMinimumPotential() * POTENTIAL_SCALE);
         int startX = Math.toIntExact((long) cell.planningCellX() * size);
         int startZ = Math.toIntExact((long) cell.planningCellZ() * size);
         int offsetX = floorModHash(hash(HUB_POSITION_SALT, cell.planningCellX(), cell.planningCellZ(), 0), spacing);
@@ -171,9 +172,16 @@ public final class IntercityHighwayPlanner {
             for (int localZ = offsetZ; localZ < size; localZ += spacing) {
                 int chunkX = moveHubXOffRailwayCorridor(Math.addExact(startX, localX), localX, size);
                 int chunkZ = moveHubZOffRailwayCorridor(Math.addExact(startZ, localZ), localZ, size);
-                int potentialScore = potentialScore(chunkX, chunkZ);
                 long tie = hash(HUB_SAMPLE_SALT, chunkX, chunkZ,
                         floorModHash(hash(HUB_STRENGTH_SALT, cell.planningCellX(), cell.planningCellZ(), 0), Integer.MAX_VALUE));
+                boolean hasQualifyingBest = best != null && best.potentialScore() >= minimum;
+                int requiredScore = hasQualifyingBest
+                        ? best.potentialScore() + (Long.compareUnsigned(tie, bestTie) < 0 ? 0 : 1)
+                        : minimum;
+                int potentialScore = cityPotential.getScoreWithUpperBound(chunkX, chunkZ, requiredScore);
+                if (potentialScore < 0) {
+                    continue;
+                }
                 if (best == null || potentialScore > best.potentialScore()
                         || potentialScore == best.potentialScore() && Long.compareUnsigned(tie, bestTie) < 0) {
                     best = new HighwayHub(cell, chunkX, chunkZ, potentialScore, 0);
@@ -181,7 +189,6 @@ public final class IntercityHighwayPlanner {
                 }
             }
         }
-        int minimum = Math.round(settings.hubMinimumPotential() * POTENTIAL_SCALE);
         if (best == null || best.potentialScore() < minimum) {
             return Optional.empty();
         }
@@ -463,8 +470,7 @@ public final class IntercityHighwayPlanner {
     }
 
     private int potentialScore(int chunkX, int chunkZ) {
-        float potential = Math.min(Math.max(cityPotential.getPotential(chunkX, chunkZ), 0.0f), 1.0f);
-        return Math.round(potential * POTENTIAL_SCALE);
+        return CityPotential.score(cityPotential.getPotential(chunkX, chunkZ));
     }
 
     private Comparator<ConnectionCandidate> candidateComparator() {

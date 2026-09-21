@@ -209,11 +209,13 @@ public class ForgeEventHandlers {
             } else if (profile.FORCE_SPAWN_BUILDINGS.length > 0 || profile.FORCE_SPAWN_PARTS.length > 0) {
                 Set<String> buildings = Set.of(profile.FORCE_SPAWN_BUILDINGS);
                 Set<String> parts = Set.of(profile.FORCE_SPAWN_PARTS);
-                isSuitableChunk = isSuitableChunk.and(coord -> isForcedBuildingSpawnChunk(dimensionInfo, profile, buildings, parts, coord));
+                SpawnBuildingPrefilter prefilter = SpawnBuildingPrefilter.create(dimensionInfo, profile, buildings);
+                isSuitableChunk = isSuitableChunk.and(coord -> isForcedBuildingSpawnChunk(dimensionInfo, profile, buildings, parts, prefilter, coord));
                 needsCheck = true;
             } else if (profile.FORCE_SPAWN_IN_BUILDING) {
                 Set<String> empty = Set.of();
-                isSuitableChunk = isSuitableChunk.and(coord -> isForcedBuildingSpawnChunk(dimensionInfo, profile, empty, empty, coord));
+                SpawnBuildingPrefilter prefilter = SpawnBuildingPrefilter.create(dimensionInfo, profile, empty);
+                isSuitableChunk = isSuitableChunk.and(coord -> isForcedBuildingSpawnChunk(dimensionInfo, profile, empty, empty, prefilter, coord));
                 needsCheck = true;
             }
 
@@ -251,7 +253,16 @@ public class ForgeEventHandlers {
         return !(info.isCity() && info.hasBuilding);
     }
 
-    private boolean isForcedBuildingSpawnChunk(IDimensionInfo dimensionInfo, LostCityProfile profile, Set<String> buildings, Set<String> parts, ChunkCoord coord) {
+    private boolean isForcedBuildingSpawnChunk(IDimensionInfo dimensionInfo, LostCityProfile profile, Set<String> buildings,
+                                               Set<String> parts, SpawnBuildingPrefilter prefilter, ChunkCoord coord) {
+        SpawnBuildingPrefilter.Result preliminary = prefilter.test(coord);
+        if (preliminary == SpawnBuildingPrefilter.Result.NOT_CITY) {
+            return false;
+        }
+        if (preliminary == SpawnBuildingPrefilter.Result.STYLE_MISMATCH) {
+            return false;
+        }
+
         LostChunkCharacteristics characteristics = BuildingInfo.getChunkCharacteristics(coord, dimensionInfo);
         if (!buildings.isEmpty() && (characteristics.buildingType == null
                 || !buildings.contains(characteristics.buildingType.getId().toString()))) {

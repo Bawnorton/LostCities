@@ -70,7 +70,8 @@ public class DefaultDimensionInfo implements IDimensionInfo {
                     highwaySettings, style.getId());
             highwayPlanner = new IntercityHighwayPlanner(world.getSeed(), world.getLevel().dimension().location().toString(),
                     highwaySettings,
-                    new ApproximateCityPotential(world.getSeed(), profile, this::applyHighwayCityConstraints),
+                    new ApproximateCityPotential(world.getSeed(), profile, this::applyHighwayCityConstraints,
+                            style.getMaximumCityChanceMultiplier()),
                     new HighwayCityLevelSource(this),
                     LostCityHighwayData.get(world.getLevel()).forDimension(world.getLevel().dimension(), cacheSignature));
             highwayPlanningService = new HighwayPlanningService(highwayPlanner);
