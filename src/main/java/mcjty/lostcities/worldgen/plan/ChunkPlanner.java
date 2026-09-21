@@ -37,18 +37,17 @@ public final class ChunkPlanner {
     }
 
     public static HighwayInfo highway(ChunkCoord coord, IDimensionInfo provider, LostCityProfile profile) {
-        return plan(coord).highway(() -> Highway.computeHighwayInfo(coord, provider, profile));
+        return PLANS.withPinnedValue(coord, key -> new ChunkPlan(),
+                plan -> plan.highway(() -> Highway.computeHighwayInfo(coord, provider, profile)));
     }
 
     public static LostChunkCharacteristics characteristics(ChunkCoord coord, IDimensionInfo provider) {
-        return plan(coord).characteristics(() -> BuildingInfo.computeChunkCharacteristics(coord, provider));
+        return PLANS.withPinnedValue(coord, key -> new ChunkPlan(),
+                plan -> plan.characteristics(() -> BuildingInfo.computeChunkCharacteristics(coord, provider)));
     }
 
     public static BuildingInfo buildingInfo(ChunkCoord coord, IDimensionInfo provider) {
-        return plan(coord).buildingInfo(() -> BuildingInfo.computeBuildingInfo(coord, provider));
-    }
-
-    private static ChunkPlan plan(ChunkCoord coord) {
-        return PLANS.computeIfAbsent(coord, key -> new ChunkPlan());
+        return PLANS.withPinnedValue(coord, key -> new ChunkPlan(),
+                plan -> plan.buildingInfo(() -> BuildingInfo.computeBuildingInfo(coord, provider)));
     }
 }

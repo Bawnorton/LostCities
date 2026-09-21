@@ -4,21 +4,23 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
 
 public final class HighwayPlanningService implements AutoCloseable {
+    private static final int HUB_CACHE_SIZE = 4096;
+    private static final int DEPENDENCY_CACHE_SIZE = 2048;
+
     private final IntercityHighwayPlanner planner;
     private final Executor executor;
 
-    private final ConcurrentHashMap<HubKey, CompletableFuture<Optional<HighwayHub>>> hubFutures = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<HubKey, CompletableFuture<List<IntercityHighwayPlanner.ConnectionCandidate>>> candidateFutures = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<HubKey, CompletableFuture<List<HubKey>>> selectionFutures = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<HubKey, CompletableFuture<List<HighwayRoute>>> routeFutures = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<HubKey, CompletableFuture<Void>> prepareFutures = new ConcurrentHashMap<>();
+    private final BoundedFutureCache<HubKey, Optional<HighwayHub>> hubFutures = new BoundedFutureCache<>(HUB_CACHE_SIZE);
+    private final BoundedFutureCache<HubKey, List<IntercityHighwayPlanner.ConnectionCandidate>> candidateFutures = new BoundedFutureCache<>(DEPENDENCY_CACHE_SIZE);
+    private final BoundedFutureCache<HubKey, List<HubKey>> selectionFutures = new BoundedFutureCache<>(DEPENDENCY_CACHE_SIZE);
+    private final BoundedFutureCache<HubKey, List<HighwayRoute>> routeFutures = new BoundedFutureCache<>(DEPENDENCY_CACHE_SIZE);
+    private final BoundedFutureCache<HubKey, Void> prepareFutures = new BoundedFutureCache<>(DEPENDENCY_CACHE_SIZE);
 
     private final LongAdder runningTasks = new LongAdder();
     private final LongAdder completedTasks = new LongAdder();
@@ -178,11 +180,18 @@ public final class HighwayPlanningService implements AutoCloseable {
                     + ", submissions: " + pool.getQueuedSubmissionCount()
                     + ", runningTasks: " + runningTasks.sum()
                     + ", completedTasks: " + completedTasks.sum()
-                    + ", submittedTasks: " + submittedTasks.sum();
+                    + ", submittedTasks: " + submittedTasks.sum()
+                    + ", cachedFutures: " + cachedFutureCount();
         }
 
         return "Running tasks: " + runningTasks.sum()
                 + ", completed tasks: " + completedTasks.sum()
-                + ", submitted tasks: " + submittedTasks.sum();
+                + ", submitted tasks: " + submittedTasks.sum()
+                + ", cached futures: " + cachedFutureCount();
+    }
+
+    private int cachedFutureCount() {
+        return hubFutures.size() + candidateFutures.size() + selectionFutures.size()
+                + routeFutures.size() + prepareFutures.size();
     }
 }

@@ -622,15 +622,22 @@ public final class IntercityHighwayPlanner {
             if (values.size() <= maximumSize || !trimming.compareAndSet(false, true)) {
                 return;
             }
+            boolean retry;
             try {
-                int excess = values.size() - maximumSize;
-                var iterator = values.keySet().iterator();
-                while (excess-- > 0 && iterator.hasNext()) {
-                    iterator.next();
-                    iterator.remove();
+                Iterator<Map.Entry<K, CompletableFuture<V>>> iterator = values.entrySet().iterator();
+                while (values.size() > maximumSize && iterator.hasNext()) {
+                    Map.Entry<K, CompletableFuture<V>> entry = iterator.next();
+                    CompletableFuture<V> future = entry.getValue();
+                    if (future.isDone()) {
+                        values.remove(entry.getKey(), future);
+                    }
                 }
             } finally {
                 trimming.set(false);
+                retry = values.size() > maximumSize && values.values().stream().anyMatch(CompletableFuture::isDone);
+            }
+            if (retry) {
+                trim();
             }
         }
     }
